@@ -22,9 +22,13 @@ class Robo
 {
     const APPLICATION_NAME = 'Robo';
 <<<<<<< HEAD
-    const VERSION = '2.0.1-dev';
+<<<<<<< HEAD
+    const VERSION = '2.0.2-dev';
 =======
-    const VERSION = '2.0.1-dev';
+    const VERSION = '2.0.2-dev';
+>>>>>>> master
+=======
+    const VERSION = '2.0.2-dev';
 >>>>>>> master
 
     /**

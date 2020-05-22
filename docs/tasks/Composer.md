@@ -197,6 +197,7 @@ $this->taskComposerInstall('path/to/my/composer.phar')
 ?>
 ```
 
+* `noSuggest($noSuggest = null)`  adds `no-suggest` option to composer
 * `preferDist($preferDist = null)`  adds `prefer-dist` option to composer
 * `preferSource()`  adds `prefer-source` option to composer
 * `dev($dev = null)`  adds `dev` option to composer
@@ -270,6 +271,7 @@ $this->taskComposerRequire()->dependency('foo/bar', '^.2.4.8')->run();
 ```
 
 * `dependency($project, $version = null)`  'require' is a keyword, so it cannot be a method name.
+* `noSuggest($noSuggest = null)`  adds `no-suggest` option to composer
 * `preferDist($preferDist = null)`  adds `prefer-dist` option to composer
 * `preferSource()`  adds `prefer-source` option to composer
 * `dev($dev = null)`  adds `dev` option to composer
@@ -314,6 +316,7 @@ $this->taskComposerUpdate('path/to/my/composer.phar')
 ?>
 ```
 
+* `noSuggest($noSuggest = null)`  adds `no-suggest` option to composer
 * `preferDist($preferDist = null)`  adds `prefer-dist` option to composer
 * `preferSource()`  adds `prefer-source` option to composer
 * `dev($dev = null)`  adds `dev` option to composer

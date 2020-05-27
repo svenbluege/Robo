@@ -287,7 +287,11 @@ class Runner implements ContainerAwareInterface
     {
         /** @var \Robo\ClassDiscovery\RelativeNamespaceDiscovery $discovery */
         $discovery = Robo::service('relativeNamespaceDiscovery');
+<<<<<<< HEAD
+        $discovery->setRelativeNamespace($relativeNamespace.'\Commands')
+=======
         $discovery->setRelativeNamespace($relativeNamespace . '\Commands')
+>>>>>>> master
             ->setSearchPattern('/.*Commands?\.php$/');
         return $discovery->getClasses();
     }

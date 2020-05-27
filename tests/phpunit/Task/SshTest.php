@@ -34,8 +34,12 @@ class SshTest extends TestCase
      */
     public function testWorkingDirectoryStaticConfiguration()
     {
+<<<<<<< HEAD:tests/unit/Task/SshTest.php
+        \Robo\Task\Remote\Ssh::configure('remoteDir', '/some-dir');
+=======
         $config = new \Robo\Config\Config();
         \Robo\Task\Remote\Ssh::configure('remoteDir', '/some-dir', $config);
+>>>>>>> master:tests/phpunit/Task/SshTest.php
         $this->assertEquals(
             "ssh user@remote.example.com 'cd \"/some-dir\" && echo test'",
             (new \Robo\Task\Remote\Ssh('remote.example.com', 'user'))
@@ -57,7 +61,11 @@ class SshTest extends TestCase
                 ->exec('echo test')
                 ->getCommand()
         );
+<<<<<<< HEAD:tests/unit/Task/SshTest.php
+        \Robo\Task\Remote\Ssh::configure('remoteDir', null);
+=======
         \Robo\Task\Remote\Ssh::configure('remoteDir', null, $config);
+>>>>>>> master:tests/phpunit/Task/SshTest.php
         $this->assertEquals(
             "ssh user@remote.example.com 'echo test'",
             (new \Robo\Task\Remote\Ssh('remote.example.com', 'user'))

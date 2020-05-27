@@ -1,5 +1,8 @@
 <?php
+<<<<<<< HEAD
+=======
 
+>>>>>>> master
 namespace Robo\Symfony;
 
 use Consolidation\AnnotatedCommand\CommandData;

@@ -183,16 +183,20 @@ class ImageMinify extends BaseTask
         $this->fs = new sfFilesystem();
 
         // guess the best path for the executables based on __DIR__
-        if (($pos = strpos(__DIR__, 'consolidation/robo')) !== false) {
+        if (($pos = strpos(__DIR__, 'consolidation'.DIRECTORY_SEPARATOR.'robo')) !== false) {
             // the executables should be stored in vendor/bin
             $this->executableTargetDir = substr(__DIR__, 0, $pos) . 'bin';
+        } else {
+            // store is right here. Might happen during development time if we use a symlink.
+            // then there is no /vendor/bin folder.
+            $this->executableTargetDir = __DIR__;
         }
 
         // check if the executables are already available
         foreach ($this->imageminRepos as $exec => $url) {
             $path = $this->executableTargetDir . '/' . $exec;
             // if this is Windows add a .exe extension
-            if (substr($this->getOS(), 0, 3) == 'win') {
+            if ($this->isWindows()) {
                 $path .= '.exe';
             }
             if (is_file($path)) {
@@ -378,6 +382,12 @@ class ImageMinify extends BaseTask
             // Convert minifier name to camelCase (e.g. jpeg-recompress)
             $funcMinifier = $this->camelCase($minifier);
 
+            // create target directory if it does not exist.
+            $targetDir = dirname($to);
+            if (!is_dir($targetDir)) {
+                mkdir($targetDir, 0777, true);
+            }
+
             // call the minifier method which prepares the command
             if (is_callable($funcMinifier)) {
                 $command = call_user_func($funcMinifier, $from, $to, $this->minifierOptions);
@@ -393,35 +403,6 @@ class ImageMinify extends BaseTask
             $this->printTaskInfo('Minifying {filepath} with {minifier}', ['filepath' => $from, 'minifier' => $minifier]);
             $result = $this->executeCommand($command);
 
-            // check the return code
-            if ($result->getExitCode() == 127) {
-                $this->printTaskError('The {minifier} executable cannot be found', ['minifier' => $minifier]);
-                // try to install from imagemin repository
-                if (array_key_exists($minifier, $this->imageminRepos)) {
-                    $result = $this->installFromImagemin($minifier);
-                    if ($result instanceof Result) {
-                        if ($result->wasSuccessful()) {
-                            $this->printTaskSuccess($result->getMessage());
-                            // retry the conversion with the downloaded executable
-                            if (is_callable($minifier)) {
-                                $command = call_user_func($minifier, $from, $to, $this->minifierOptions);
-                            } elseif (method_exists($this, $minifier)) {
-                                $command = $this->{$minifier}($from, $to);
-                            }
-                            // launch the command
-                            $this->printTaskInfo('Minifying {filepath} with {minifier}', ['filepath' => $from, 'minifier' => $minifier]);
-                            $result = $this->executeCommand($command);
-                        } else {
-                            $this->printTaskError($result->getMessage());
-                            // the download was not successful
-                            return $result;
-                        }
-                    }
-                } else {
-                    return $result;
-                }
-            }
-
             // check the success of the conversion
             if ($result->getExitCode() !== 0) {
                 $this->results['error'][] = $from;
@@ -431,6 +412,10 @@ class ImageMinify extends BaseTask
         }
     }
 
+
+    protected function isWindows() {
+        return PHP_OS ==  'WINNT';
+    }
     /**
      * @return string
      */
@@ -444,6 +429,10 @@ class ImageMinify extends BaseTask
         $os = preg_replace('/i[0-9]86/', 'x86', $os);
         // turn info to lowercase, because of imagemin
         $os = strtolower($os);
+
+        if ($this->isWindows()) {
+            $os = 'win';
+        }
 
         return $os;
     }
@@ -468,6 +457,9 @@ class ImageMinify extends BaseTask
                 array_unshift($a, $key);
             }
         }
+
+        $this->prepareExecution($executable);
+
         // check if the executable can be replaced with the downloaded one
         if (array_key_exists($executable, $this->executablePaths)) {
             $executable = $this->executablePaths[$executable];
@@ -478,7 +470,26 @@ class ImageMinify extends BaseTask
         // execute the command
         $exec = new Exec($command);
 
-        return $exec->inflect($this)->printed(false)->run();
+        return $exec->inflect($this)->printOutput(false)->run();
+    }
+
+    /**
+     * Check if the command for an optimizer is available.
+     *
+     * @param String $executable
+     */
+    protected function prepareExecution($executable): void {
+        // we checked for the executable file in the constructor already
+        if (array_key_exists($executable, $this->executablePaths)) {
+            return;
+        }
+
+        // no additional downloaded files exist. Is the command avaiable?
+        if ($this->isCommandExisting($executable)) {
+            return;
+        }
+
+        $this->installFromImagemin($executable);
     }
 
     /**
@@ -497,8 +508,9 @@ class ImageMinify extends BaseTask
         $this->printTaskInfo('Downloading the {executable} executable from the imagemin repository', ['executable' => $executable]);
 
         $os = $this->getOS();
+
         $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '?raw=true';
-        if (substr($os, 0, 3) == 'win') {
+        if ($this->isWindows()) {
             // if it is win, add a .exe extension
             $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '.exe?raw=true';
         }
@@ -509,8 +521,8 @@ class ImageMinify extends BaseTask
             $data = @file_get_contents($url, false, null);
             if ($data === false) {
                 // there is still something wrong with the url if it is win, try with win32
-                if (substr($os, 0, 3) == 'win') {
-                    $url = preg_replace('win/', 'win32/', $url);
+                if ($this->isWindows()) {
+                    $url = preg_replace('/win\//', 'win32/', $url);
                     $data = @file_get_contents($url, false, null);
                     if ($data === false) {
                         // there is nothing more we can do
@@ -531,7 +543,7 @@ class ImageMinify extends BaseTask
         }
         // save the executable into the target dir
         $path = $this->executableTargetDir . '/' . $executable;
-        if (substr($os, 0, 3) == 'win') {
+        if ($this->isWindows()) {
             // if it is win, add a .exe extension
             $path = $this->executableTargetDir . '/' . $executable . '.exe';
         }
@@ -547,7 +559,7 @@ class ImageMinify extends BaseTask
         // if everything successful, store the executable path
         $this->executablePaths[$executable] = $this->executableTargetDir . '/' . $executable;
         // if it is win, add a .exe extension
-        if (substr($os, 0, 3) == 'win') {
+        if ($this->isWindows()) {
             $this->executablePaths[$executable] .= '.exe';
         }
 
@@ -723,5 +735,33 @@ class ImageMinify extends BaseTask
         $text = lcfirst($text);
 
         return $text;
+    }
+
+    /**
+     * checks if a command line command exist.
+     */
+    private function isCommandExisting ($command) {
+        $whereIsCommand = ($this->isWindows()) ? 'where' : 'which';
+
+        $process = proc_open(
+            "$whereIsCommand $command",
+            array(
+                0 => array("pipe", "r"), //STDIN
+                1 => array("pipe", "w"), //STDOUT
+                2 => array("pipe", "w"), //STDERR
+            ),
+            $pipes
+        );
+        if ($process !== false) {
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($process);
+
+            return $stdout != '';
+        }
+
+        return false;
     }
 }

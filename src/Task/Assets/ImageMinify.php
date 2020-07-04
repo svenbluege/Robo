@@ -12,6 +12,7 @@ use Symfony\Component\Filesystem\Filesystem as sfFilesystem;
 /**
  * Minifies images. When the required minifier is not installed on the system
  * the task will try to download it from the [imagemin](https://github.com/imagemin) repository.
+ * It might be necessary to adjust the command generation and the download process for a minifier. 
  *
  * When the task is run without any specified minifier it will compress the images
  * based on the extension.
@@ -416,6 +417,10 @@ class ImageMinify extends BaseTask
     protected function isWindows() {
         return PHP_OS ==  'WINNT';
     }
+
+    protected function isLinux() {
+        return PHP_OS == 'Linux';
+    }
     /**
      * @return string
      */
@@ -509,52 +514,58 @@ class ImageMinify extends BaseTask
 
         $os = $this->getOS();
 
-        $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '?raw=true';
-        if ($this->isWindows()) {
-            // if it is win, add a .exe extension
-            $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '.exe?raw=true';
+        $isDownloadHandled = false;
+
+        // check if there is a minimizer specific download function and execute it
+        $downloadFunctionName =   $this->camelCase('download_'.$executable);
+        if (method_exists($this, $downloadFunctionName)) {
+            $isDownloadHandled = $this->{$downloadFunctionName}();
         }
-        $data = @file_get_contents($url, false, null);
-        if ($data === false) {
-            // there is something wrong with the url, try it without the version info
-            $url = preg_replace('/x[68][64]\//', '', $url);
+
+        // nothing special found, so try to guess the download urls.
+        if (!$isDownloadHandled) {
+            $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '?raw=true';
+            if ($this->isWindows()) {
+                // if it is win, add a .exe extension
+                $url = $this->imageminRepos[$executable] . '/blob/master/vendor/' . $os . '/' . $executable . '.exe?raw=true';
+            }
             $data = @file_get_contents($url, false, null);
             if ($data === false) {
-                // there is still something wrong with the url if it is win, try with win32
-                if ($this->isWindows()) {
-                    $url = preg_replace('/win\//', 'win32/', $url);
-                    $data = @file_get_contents($url, false, null);
-                    if ($data === false) {
-                        // there is nothing more we can do
-                        $message = sprintf('Could not download the executable <info>%s</info>', $executable);
+                // there is something wrong with the url, try it without the version info
+                $url = preg_replace('/x[68][64]\//', '', $url);
+                $data = @file_get_contents($url, false, null);
+                if ($data === false) {
+                    // there is still something wrong with the url if it is win, try with win32
+                    if ($this->isWindows()) {
+                        $url = preg_replace('/win\//', 'win32/', $url);
+                        $data = @file_get_contents($url, false, null);
+                        if ($data === false) {
+                            // there is nothing more we can do
+                            $message = sprintf('Could not download the executable <info>%s</info>', $executable);
 
-                        return Result::error($this, $message);
+                            return Result::error($this, $message);
+                        }
                     }
+                    // if it is not windows there is nothing we can do
+                    $message = sprintf('Could not download the executable <info>%s</info>', $executable);
+
+                    return Result::error($this, $message);
                 }
-                // if it is not windows there is nothing we can do
-                $message = sprintf('Could not download the executable <info>%s</info>', $executable);
+            }
+
+            // save the executable into the target dir
+            $path = $this->executableTargetDir . '/' . $executable;
+            if ($this->isWindows()) {
+                // if it is win, add a .exe extension
+                $path = $this->executableTargetDir . '/' . $executable . '.exe';
+            }
+
+            if ($this->storeFile($data, $path) === false) {
+                $message = sprintf('Could not copy the executable <info>%s</info> to %s', $executable, $path);
 
                 return Result::error($this, $message);
             }
         }
-        // check if target directory exists
-        if (!is_dir($this->executableTargetDir)) {
-            mkdir($this->executableTargetDir);
-        }
-        // save the executable into the target dir
-        $path = $this->executableTargetDir . '/' . $executable;
-        if ($this->isWindows()) {
-            // if it is win, add a .exe extension
-            $path = $this->executableTargetDir . '/' . $executable . '.exe';
-        }
-        $result = file_put_contents($path, $data);
-        if ($result === false) {
-            $message = sprintf('Could not copy the executable <info>%s</info> to %s', $executable, $path);
-
-            return Result::error($this, $message);
-        }
-        // set the binary to executable
-        chmod($path, 0755);
 
         // if everything successful, store the executable path
         $this->executablePaths[$executable] = $this->executableTargetDir . '/' . $executable;
@@ -566,6 +577,44 @@ class ImageMinify extends BaseTask
         $message = sprintf('Executable <info>%s</info> successfully downloaded', $executable);
 
         return Result::success($this, $message);
+    }
+
+    private function storeFile($data, $path) {
+
+        // check if target directory exists
+        if (!is_dir($this->executableTargetDir)) {
+            mkdir($this->executableTargetDir);
+        }
+
+        $result = file_put_contents($path, $data);
+
+        if ($result === false) {
+            return false;
+        }
+        // set the binary to executable
+        chmod($path, 0755);
+
+        return true;
+    }
+
+    /**
+     * Downloads files from URLs and store them in the executableTargetDir
+     *
+     * @param $filenameUrlMap a map containing the filename and the url ['foo.exe'=>'http://xxx..']
+     * @return bool
+     */
+    private function downloadFilesFromUrls($filenameUrlMap) {
+        foreach($filenameUrlMap as $filename => $url) {
+
+            $data = @file_get_contents($url);
+            if ($data === false) {
+                return false;
+            }
+            if ($this->storeFile($data, $this->executableTargetDir . DIRECTORY_SEPARATOR . $filename) === false) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -599,6 +648,20 @@ class ImageMinify extends BaseTask
         return $command;
     }
 
+    protected function downloadJpegtran() {
+        if ($this->isWindows()) {
+
+            $urls = [
+                'jpegtran.exe' => $this->imageminRepos['jpegtran'] . '/blob/master/vendor/win/x64/jpegtran.exe?raw=true',
+                'libjpeg-62.dll' => $this->imageminRepos['jpegtran'] . '/blob/master/vendor/win/x64/libjpeg-62.dll?raw=true'
+                ];
+
+            return $this->downloadFilesFromUrls($urls);
+        }
+
+        return false;
+    }
+
     /**
      * @param string $from
      * @param string $to
@@ -609,7 +672,32 @@ class ImageMinify extends BaseTask
     {
         $command = sprintf('gifsicle -o "%s" "%s"', $to, $from);
 
+        if ($this->isLinux()) {
+            $command = sprintf('./node_modules/.bin/gifsicle -o "%s" "%s"', $to, $from);
+        }
         return $command;
+    }
+
+    protected function downloadGifsicle() {
+        if ($this->isWindows()) {
+
+            $urls = [
+                'gifsicle.exe' => $this->imageminRepos['gifsicle'] . '/blob/master/vendor/win/x64/gifsicle.exe?raw=true'
+            ];
+
+            return $this->downloadFilesFromUrls($urls);
+        }
+
+        if ($this->isLinux()) {
+            $command = 'npm install gifsicle';
+            $exec = new Exec($command);
+            $result = $exec->inflect($this)->printOutput(true)->run();
+            if ($result->getExitCode() == 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

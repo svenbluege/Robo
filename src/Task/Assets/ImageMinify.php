@@ -476,7 +476,6 @@ class ImageMinify extends BaseTask
 
     /**
      * @param string $command
-     *
      * @return \Robo\Result
      */
     protected function executeCommand($command)
@@ -607,7 +606,7 @@ class ImageMinify extends BaseTask
         }
 
         $message = sprintf('Executable <info>%s</info> successfully downloaded', $executable);
-
+        $this->printTaskInfo($message);
         return Result::success($this, $message);
     }
 
@@ -705,8 +704,12 @@ class ImageMinify extends BaseTask
         $command = sprintf('gifsicle -o "%s" "%s"', $to, $from);
 
         if ($this->isLinux()) {
-            $command = sprintf('./node_modules/.bin/gifsicle -o "%s" "%s"', $to, $from);
+            if (!file_exists('./node_modules/.bin/gifsicle')) {
+                $this->prepareExecution('gifsicle');
+            }
+            $command = sprintf(realpath ('./node_modules/.bin/gifsicle'),' -o "%s" "%s"', $to, $from);
         }
+
         return $command;
     }
 

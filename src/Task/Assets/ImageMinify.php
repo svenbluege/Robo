@@ -12,7 +12,7 @@ use Symfony\Component\Filesystem\Filesystem as sfFilesystem;
 /**
  * Minifies images. When the required minifier is not installed on the system
  * the task will try to download it from the [imagemin](https://github.com/imagemin) repository.
- * It might be necessary to adjust the command generation and the download process for a minifier. 
+ * It might be necessary to adjust the command generation and the download process for a minifier.
  *
  * When the task is run without any specified minifier it will compress the images
  * based on the extension.
@@ -74,6 +74,12 @@ class ImageMinify extends BaseTask
      * @var string
      */
     protected $to;
+
+    /**
+     * the base path of the original files so we can derive the path for the target files automatically.
+     * @var string
+     */
+    protected $basePath = null;
 
     /**
      * Array of the source files.
@@ -249,6 +255,24 @@ class ImageMinify extends BaseTask
     }
 
     /**
+     * Set the base path. This is used to create the path for target images automatically
+     *
+     * dir; foo/bar/**\/*.jpg
+     * basepath: foo/bar
+     * to: /dist/images
+     *
+     * possible files:
+     * foo/bar/folder1/1.jpg => /dist/images/folder1/1.jpg
+     *
+     * @param string $path
+     * @return $this
+     */
+    public function basePath($path) {
+        $this->basePath = rtrim($path, '/');
+        return $this;
+    }
+
+    /**
      * Sets the minifier.
      *
      * @param string $minifier
@@ -310,7 +334,15 @@ class ImageMinify extends BaseTask
 
             foreach ($finder as $file) {
                 // store the absolute path as key and target as value in the files array
-                $files[$file->getRealpath()] = $this->getTarget($file->getRealPath(), $to);
+
+                $sourceFile = $file->getRealPath();
+                $targetDirectory = $to;
+
+                if ($this->basePath) {
+                    $targetDirectory = realpath($to) . dirname(substr($sourceFile, strpos($sourceFile, $this->basePath) + strlen($this->basePath)));
+                }
+
+                $files[$file->getRealpath()] = $this->getTarget($sourceFile, $targetDirectory);
             }
             $fileNoun = count($finder) == 1 ? ' file' : ' files';
             $this->printTaskInfo("Found {filecount} $fileNoun in {dir}", ['filecount' => count($finder), 'dir' => $dir]);
@@ -327,7 +359,7 @@ class ImageMinify extends BaseTask
      */
     protected function getTarget($file, $to)
     {
-        $target = $to . '/' . basename($file);
+        $target = $to . DIRECTORY_SEPARATOR . basename($file);
 
         return $target;
     }
@@ -654,7 +686,7 @@ class ImageMinify extends BaseTask
             $urls = [
                 'jpegtran.exe' => $this->imageminRepos['jpegtran'] . '/blob/master/vendor/win/x64/jpegtran.exe?raw=true',
                 'libjpeg-62.dll' => $this->imageminRepos['jpegtran'] . '/blob/master/vendor/win/x64/libjpeg-62.dll?raw=true'
-                ];
+            ];
 
             return $this->downloadFilesFromUrls($urls);
         }
